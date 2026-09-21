@@ -137,7 +137,7 @@ namespace Il2CppDumper
                                 var parameterName = metadata.GetStringFromIndex(parameterDef.nameIndex);
                                 var parameterType = il2Cpp.types[parameterDef.typeIndex];
                                 var parameterCType = ParseType(parameterType);
-                                if (parameterType.byref == 1)
+                                if (parameterType.byref == 1)        
                                 {
                                     parameterCType += "*";
                                 }
@@ -806,42 +806,69 @@ namespace Il2CppDumper
         private void AddVTableMethod(StructInfo structInfo, Il2CppTypeDefinition typeDef)
         {
             var dic = new SortedDictionary<int, Il2CppMethodDefinition>();
+
             for (int i = 0; i < typeDef.vtable_count; i++)
             {
                 var vTableIndex = typeDef.vtableStart + i;
-                var encodedMethodIndex = metadata.vtableMethods[vTableIndex];
-                // The usage kind must be mapped per version: il2cpp 106.1+ (and
-                // metadata v108+) dropped one member of the usage enum.
-                var usage = metadata.GetEncodedIndexTypeForVersion(encodedMethodIndex);
-                var index = metadata.GetDecodedMethodIndex(encodedMethodIndex);
-                Il2CppMethodDefinition methodDef;
-                if (usage == (uint)Il2CppMetadataUsage.kIl2CppMetadataUsageMethodRef)
+                if ((uint)vTableIndex >= (uint)metadata.vtableMethods.Length)
                 {
+                    continue;
+                }
+
+                var encodedMethodIndex = metadata.vtableMethods[vTableIndex];
+                var usage = Metadata.GetEncodedIndexType(encodedMethodIndex);
+                var index = metadata.GetDecodedMethodIndex(encodedMethodIndex);
+
+                Il2CppMethodDefinition methodDef;
+
+                if (usage == 6) // kIl2CppMetadataUsageMethodRef
+                {
+                    if ((uint)index >= (uint)il2Cpp.methodSpecs.Length)
+                    {
+                        continue;
+                    }
+
                     var methodSpec = il2Cpp.methodSpecs[index];
-                    methodDef = metadata.methodDefs[methodSpec.methodDefinitionIndex];
+                    var methodDefIndex = methodSpec.methodDefinitionIndex;
+
+                    // Handles our (-1,-1,-1) poisoned MethodSpec sentinel and any remaining corrupt MethodSpec safely.
+                    if ((uint)methodDefIndex >= (uint)metadata.methodDefs.Length)
+                    {
+                        continue;
+                    }
+
+                    methodDef = metadata.methodDefs[methodDefIndex];
                 }
                 else
                 {
+                    if ((uint)index >= (uint)metadata.methodDefs.Length)
+                    {
+                        continue;
+                    }
+
                     methodDef = metadata.methodDefs[index];
                 }
+
                 if (methodDef.slot != ushort.MaxValue)
                 {
                     dic[methodDef.slot] = methodDef;
                 }
             }
+
             if (dic.Count > 0)
             {
                 structInfo.VTableMethod = new StructVTableMethodInfo[dic.Last().Key + 1];
-                foreach (var i in dic)
+
+                foreach (var item in dic)
                 {
                     var methodInfo = new StructVTableMethodInfo();
-                    structInfo.VTableMethod[i.Key] = methodInfo;
-                    var methodDef = i.Value;
+                    structInfo.VTableMethod[item.Key] = methodInfo;
+
+                    var methodDef = item.Value;
                     methodInfo.MethodName = $"{FixName(metadata.GetStringFromIndex(methodDef.nameIndex))}";
                 }
             }
         }
-
         private void AddRGCTX(StructInfo structInfo, Il2CppTypeDefinition typeDef)
         {
             var imageName = typeDefImageNames[typeDef];
