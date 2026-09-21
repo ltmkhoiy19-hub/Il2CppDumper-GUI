@@ -548,20 +548,56 @@ namespace Il2CppDumper
 
         private void AddMetadataUsageMethodRef(ScriptJson json, uint index, ulong address)
         {
-            var methodSpec = il2Cpp.methodSpecs[index];
-            var scriptMetadataMethod = new ScriptMetadataMethod();
-            json.ScriptMetadataMethod.Add(scriptMetadataMethod);
-            scriptMetadataMethod.Address = il2Cpp.GetRVA(address);
-            (var methodSpecTypeName, var methodSpecMethodName) = executor.GetMethodSpecName(methodSpec, true);
-            scriptMetadataMethod.Name = "Method$" + methodSpecTypeName + "." + methodSpecMethodName + "()";
-            if (il2Cpp.methodSpecGenericMethodPointers.ContainsKey(methodSpec))
+            if (index >= il2Cpp.methodSpecs.Length)
             {
-                var genericMethodPointer = il2Cpp.methodSpecGenericMethodPointers[methodSpec];
+                return;
+            }
+
+            var methodSpec = il2Cpp.methodSpecs[index];
+
+            // methodDefinitionIndex must be a valid metadata method.
+            if ((uint)methodSpec.methodDefinitionIndex >= (uint)metadata.methodDefs.Length)
+            {
+                return;
+            }
+
+            // Generic class instantiation index.
+            if (methodSpec.classIndexIndex != -1 && (uint)methodSpec.classIndexIndex >= (uint)il2Cpp.genericInsts.Length)
+            {
+                return;
+            }
+
+            // Generic method instantiation index.
+            if (methodSpec.methodIndexIndex != -1 && (uint)methodSpec.methodIndexIndex >= (uint)il2Cpp.genericInsts.Length)
+            {
+                return;
+            }
+
+            var methodDef = metadata.methodDefs[methodSpec.methodDefinitionIndex];
+
+            // GetMethodSpecName() subsequently indexes typeDefs through methodDef.declaringType.
+            if ((uint)methodDef.declaringType >= (uint)metadata.typeDefs.Length)
+            {
+                return;
+            }
+
+            // Do NOT append an empty ScriptMetadataMethod until all indexes have been validated.
+            var scriptMetadataMethod = new ScriptMetadataMethod();
+            scriptMetadataMethod.Address = il2Cpp.GetRVA(address);
+
+            (var methodSpecTypeName, var methodSpecMethodName) = executor.GetMethodSpecName(methodSpec, true);
+            scriptMetadataMethod.Name = $"Method${methodSpecTypeName}.{methodSpecMethodName}()";
+
+            if (il2Cpp.methodSpecGenericMethodPointers.TryGetValue(methodSpec, out var genericMethodPointer))
+            {
                 if (genericMethodPointer > 0)
                 {
                     scriptMetadataMethod.MethodAddress = il2Cpp.GetRVA(genericMethodPointer);
                 }
             }
+
+            // Add only after the MethodSpec is completely valid.
+            json.ScriptMetadataMethod.Add(scriptMetadataMethod);
         }
 
         private static string FixName(string str)
