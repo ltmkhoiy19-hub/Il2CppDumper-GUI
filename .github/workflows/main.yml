@@ -1,0 +1,52 @@
+name: Build Il2CppDumper GUI
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch: # Cho phép bấm chạy thủ công từ tab Actions
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive # Đảm bảo kéo đủ các submodules nếu có
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.0.x
+          7.0.x
+          6.0.x
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build and Publish GUI
+      shell: pwsh
+      run: |
+        # Tìm project GUI (.csproj) trong repository
+        $guiProject = Get-ChildItem -Recurse -Filter "*GUI*.csproj" | Select-Object -First 1
+
+        if (-not $guiProject) {
+            Write-Host "Khong tim thay csproj chua chu 'GUI', tien hanh build toan bo Solution..."
+            dotnet publish -c Release -r win-x64 --self-contained false -o ./publish_gui
+        } else {
+            Write-Host "Tim thay project GUI: $($guiProject.FullName)"
+            dotnet publish $guiProject.FullName -c Release -r win-x64 --self-contained false -o ./publish_gui
+        }
+
+    - name: Package Output Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Il2CppDumper-GUI-win-x64
+        path: ./publish_gui/
